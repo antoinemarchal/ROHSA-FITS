@@ -1,0 +1,32 @@
+&user_parameters
+    filename =  '../data/GHIGLS_DFN_Tb_32.fits'
+    ,fileout =  '!../data/GHIGLS_DFN_Tb_32_gauss_run_0_ifort.fits'
+    ,timeout =  'timestep.dat'
+    ,filename_noise = ''
+    ,n_gauss =  3
+    ,lambda_amp =  1.0d0
+    ,lambda_mu =  1.0d0
+    ,lambda_sig =  1.0d0
+    ,lambda_var_sig =  1.0d0
+    ,lambda_lym_sig =  0d0
+    ,amp_fact_init =  0.6666d0
+    ,sig_init =  4.0d0
+    ,lb_sig_init =  1.0d0
+    ,ub_sig_init =  12.0d0
+    ,lb_sig =  1.0d0
+    ,ub_sig =  100.0d0
+    ,init_option =  'mean'
+    ,maxiter_init =  15000
+    ,maxiter =  800
+    ,m =  10
+    ,noise =  .false.
+    ,regul =  .true.
+    ,descent =  .true.
+    ,lstd =  1
+    ,ustd =  20
+    ,iprint =  -1
+    ,iprint_init =  -1
+    ,save_grid =  .true.
+    ,norm_var =  .true.
+    /
+
