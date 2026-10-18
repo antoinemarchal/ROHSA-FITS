@@ -12,7 +12,7 @@ GFLAGS= -O2 -I/usr/local/include -lcfitsio
 
 CFLAGS= -lm -g -O2 -lcfitsio
 
-OUT= ROHSA-FITS-ifort-18.0.1-O2
+OUT= ROHSA-FITS-ifort-fast
 # OUT= ROHSA-FITS-ifort-18.0.1-O2-sig_norm
 # OUT= ROHSA-FITS-ifort-18.0.1-O3-fast
 # OUT= ROHSA-FITS-gfort-7.3.0-O2

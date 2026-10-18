@@ -36,11 +36,23 @@ contains
     real(xp) :: g    
     real(xp), dimension(dim_v) :: model
 
+    integer :: start, finish, delta
+
     g = 0._xp
     model = 0._xp
     
     do i=1, n_gauss
-       do k=1, dim_v
+       delta = 5._xp * params(3+(3*(i-1)))
+       start = int(params(2+(3*(i-1))) - delta)
+       finish = int(params(2+(3*(i-1))) + delta)
+       if (start .le. 1) then 
+          start = 1 
+       end if
+       if (finish > dim_v) then 
+          finish = dim_v
+       end if
+       do k=start, finish
+          ! do k=1, dim_v
           g = gaussian(k, params(1+(3*(i-1))), params(2+(3*(i-1))), params(3+(3*(i-1))))
           model(k) = model(k) + g
        enddo
@@ -77,6 +89,8 @@ contains
 
     real(xp), dimension(:,:), allocatable :: dF_over_dB
 
+    integer :: start, finish, delta
+
     allocate(dF_over_dB(3*n_gauss, dim_v))
 
     g = 0._xp
@@ -84,7 +98,17 @@ contains
     gradient = 0._xp
 
     do i=1, n_gauss
-       do k=1, dim_v          
+       delta = 5._xp * params(3+(3*(i-1)))
+       start = int(params(2+(3*(i-1))) - delta)
+       finish = int(params(2+(3*(i-1))) + delta)
+       if (start .le. 1) then 
+          start = 1 
+       end if
+       if (finish > dim_v) then 
+          finish = dim_v
+       end if
+       do k=start, finish
+       ! do k=1, dim_v          
           dF_over_dB(1+(3*(i-1)),k) = dF_over_dB(1+(3*(i-1)),k) +&
                exp( ( -(real(k,xp) - params(2+(3*(i-1))))**2._xp) / (2._xp * params(3+(3*(i-1)))**2._xp))
 
@@ -278,6 +302,8 @@ contains
     real(xp), dimension(:), allocatable :: model
     real(xp) :: gauss
 
+    integer :: start, finish, delta
+
     allocate(deriv(3*n_gauss, dim_y, dim_x))
     allocate(residual(dim_v, dim_y, dim_x))
     allocate(b_params(n_gauss))
@@ -345,8 +371,18 @@ contains
              g((n_beta-n_gauss)+i) = g((n_beta-n_gauss)+i) - (lambda_var_sig * (image_sig(j,l) - b_params(i)) * (image_sig(j,l) / b_params(i)**2._xp))
              
              !
-             do k=1, dim_v                          
-                if (std_map(j,l) > 0._xp) then
+             if (std_map(j,l) > 0._xp) then
+                delta = 5._xp * params(3+(3*(i-1)),j,l)
+                start = int(params(2+(3*(i-1)),j,l) - delta)
+                finish = int(params(2+(3*(i-1)),j,l) + delta)
+                if (start < 1) then 
+                   start = 1 
+                end if
+                if (finish > dim_v) then 
+                   finish = dim_v
+                end if
+                do k=start, finish
+                ! do k=1, dim_v                          
                    deriv(1+(3*(i-1)),j,l) = deriv(1+(3*(i-1)),j,l) + (exp( ( -(real(k,xp) - params(2+(3*(i-1)),j,l))**2._xp) &
                         / (2._xp * params(3+(3*(i-1)),j,l)**2._xp))) &
                         * (residual(k,j,l)/std_map(j,l)**2._xp) 
@@ -361,9 +397,9 @@ contains
                         ( real(k,xp) - params(2+(3*(i-1)),j,l) )**2._xp / (params(3+(3*(i-1)),j,l)**3._xp) * &
                         exp( ( -(real(k,xp) - params(2+(3*(i-1)),j,l))**2._xp) / (2._xp * params(3+(3*(i-1)),j,l)**2._xp))) &
                         * (residual(k,j,l)/std_map(j,l)**2._xp)
-                end if
-             end do
-
+                end do
+             end if
+             
              deriv(1+(3*(i-1)),j,l) = deriv(1+(3*(i-1)),j,l) + (lambda_amp * conv_conv_amp(j,l))
              deriv(2+(3*(i-1)),j,l) = deriv(2+(3*(i-1)),j,l) + (lambda_mu * conv_conv_mu(j,l))
              deriv(3+(3*(i-1)),j,l) = deriv(3+(3*(i-1)),j,l) + (lambda_sig * conv_conv_sig(j,l) + &
