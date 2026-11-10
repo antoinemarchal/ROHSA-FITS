@@ -368,7 +368,7 @@ contains
              f = f + (0.5_xp * lambda_mu * conv_mu(j,l)**2)
              f = f + (0.5_xp * lambda_sig * conv_sig(j,l)**2) + (0.5_xp * lambda_var_sig * ((image_sig(j,l) - b_params(i)) / b_params(i))**2._xp)             
 
-             g((n_beta-n_gauss)+i) = g((n_beta-n_gauss)+i) - (lambda_var_sig * (image_sig(j,l) - b_params(i)) * (image_sig(j,l) / b_params(i)**2._xp))
+             g((n_beta-n_gauss)+i) = g((n_beta-n_gauss)+i) - (lambda_var_sig * (image_sig(j,l) - b_params(i)) * (image_sig(j,l) / b_params(i)**3._xp))
              
              !
              if (std_map(j,l) > 0._xp) then
@@ -403,7 +403,7 @@ contains
              deriv(1+(3*(i-1)),j,l) = deriv(1+(3*(i-1)),j,l) + (lambda_amp * conv_conv_amp(j,l))
              deriv(2+(3*(i-1)),j,l) = deriv(2+(3*(i-1)),j,l) + (lambda_mu * conv_conv_mu(j,l))
              deriv(3+(3*(i-1)),j,l) = deriv(3+(3*(i-1)),j,l) + (lambda_sig * conv_conv_sig(j,l) + &
-                  (lambda_var_sig * (image_sig(j,l) - b_params(i)) / b_params(i)))
+                  (lambda_var_sig * (image_sig(j,l) - b_params(i)) / b_params(i)**2._xp))
           end do
           !
        end do
