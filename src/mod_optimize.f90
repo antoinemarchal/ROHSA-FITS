@@ -132,6 +132,36 @@ contains
   end subroutine mygrad_spec
 
   
+  !! Data-term derivatives of one Gaussian (amplitude a, centre mu, width sig)
+  !! at one pixel, added to d_a, d_mu, d_sig, over channels k0..k1. The
+  !! Gaussian (ee) and the weighted residual (rr) are computed once per channel
+  !! and shared by the three derivatives. A separate routine with plain array
+  !! arguments, so that the compiler optimises this loop inside the OpenMP
+  !! regions of the cost functions as well as it did in the serial code.
+  subroutine data_gradient(k0, k1, a, mu, sig, residual, dim_v, std, d_a, d_mu, d_sig)
+    implicit none
+
+    integer, intent(in) :: k0, k1, dim_v
+    real(xp), intent(in) :: a, mu, sig, std
+    real(xp), intent(in) :: residual(dim_v)
+    real(xp), intent(inout) :: d_a, d_mu, d_sig
+
+    integer :: k
+    real(xp) :: ee, rr
+
+    ! Not vectorised: gfortran would call a vector exp() here, which rounds
+    ! differently from the scalar one used before, and results would change.
+!GCC$ novector
+    do k=k0, k1
+       ee = exp( ( -(real(k,xp) - mu)**2._xp) / (2._xp * sig**2._xp))
+       rr = residual(k)/std**2._xp
+       d_a = d_a + ee * rr
+       d_mu = d_mu + (a * ( real(k,xp) - mu ) / (sig**2._xp) * ee) * rr
+       d_sig = d_sig + (a * ( real(k,xp) - mu )**2._xp / (sig**3._xp) * ee) * rr
+    end do
+  end subroutine data_gradient
+
+
   ! Compute the objective function for a cube and the gradient of the obkective function
   subroutine f_g_cube_fast(f, g, cube, beta, dim_v, dim_y, dim_x, n_gauss, kernel, lambda_amp, lambda_mu, lambda_sig, &
        lambda_var_amp, lambda_var_mu, lambda_var_sig, std_map)
@@ -161,6 +191,7 @@ contains
     real(xp), dimension(:), allocatable :: model
     real(xp) :: gauss
     real(xp) :: ee, rr
+    real(xp), dimension(:,:), allocatable :: fpix
 
     allocate(deriv(3*n_gauss, dim_y, dim_x))
     allocate(residual(dim_v, dim_y, dim_x))
@@ -187,22 +218,34 @@ contains
     end do
 
     ! Compute the objective function and the gradient
+    ! The spectra are independent and run in parallel (OpenMP); each one's
+    ! term of f is stored and added to f afterwards in the original order, so
+    ! f does not depend on the number of threads.
+    allocate(fpix(dim_y, dim_x))
+    !$omp parallel private(residual_1D, i)
     allocate(residual_1D(dim_v))
     residual_1D = 0._xp
-    ! $omp parallel private(residual_1D,i)reduction(+:f)
-    ! $omp do schedule(dynamic,8)
+    !$omp do schedule(static)
     do j=1, dim_x
        do i=1, dim_y
           call myresidual(params(:,i,j), cube(:,i,j), residual_1D, n_gauss, dim_v)
           residual(:,i,j) = residual_1D
           if (std_map(i,j) > 0._xp) then
-             f = f + (myfunc_spec(residual_1D)/std_map(i,j)**2._xp)
+             fpix(i,j) = myfunc_spec(residual_1D)/std_map(i,j)**2._xp
           end if
        end do
     end do
-    ! $omp end do
-    ! $omp end parallel
-    deallocate(residual_1D)      
+    !$omp end do
+    deallocate(residual_1D)
+    !$omp end parallel
+    do j=1, dim_x
+       do i=1, dim_y
+          if (std_map(i,j) > 0._xp) then
+             f = f + fpix(i,j)
+          end if
+       end do
+    end do
+    deallocate(fpix)
     
     ! Compute the objective function and the gradient
     do i=1, n_gauss
@@ -219,27 +262,26 @@ contains
        call convolution_2D_mirror(conv_mu, conv_conv_mu, dim_y, dim_x, kernel, 3)
        call convolution_2D_mirror(conv_sig, conv_conv_sig, dim_y, dim_x, kernel, 3)
        
+       ! Regularization terms of f and of the gradient on b_params: serial, in
+       ! the original order (they are cheap). The per-pixel derivatives below
+       ! are independent and run in parallel over columns.
        do l=1, dim_x
           do j=1, dim_y
-             !Regularization
              f = f + (0.5_xp * lambda_amp * conv_amp(j,l)**2)
              f = f + (0.5_xp * lambda_mu * conv_mu(j,l)**2)
              f = f + (0.5_xp * lambda_sig * conv_sig(j,l)**2) + (0.5_xp * lambda_var_sig * (image_sig(j,l) - b_params(i))**2._xp)
              
              g((n_beta-n_gauss)+i) = g((n_beta-n_gauss)+i) - (lambda_var_sig * (image_sig(j,l) - b_params(i)))        
-             
-             ! The Gaussian (ee) and the weighted residual (rr) are computed once
-             ! per channel and shared by the three derivatives.
+          end do
+       end do
+
+       !$omp parallel do private(j) schedule(static)
+       do l=1, dim_x
+          do j=1, dim_y
              if (std_map(j,l) > 0._xp) then
-                do k=1, dim_v
-                   ee = exp( ( -(real(k,xp) - params(2+(3*(i-1)),j,l))**2._xp) / (2._xp * params(3+(3*(i-1)),j,l)**2._xp))
-                   rr = residual(k,j,l)/std_map(j,l)**2._xp
-                   deriv(1+(3*(i-1)),j,l) = deriv(1+(3*(i-1)),j,l) + ee * rr
-                   deriv(2+(3*(i-1)),j,l) = deriv(2+(3*(i-1)),j,l) + (params(1+(3*(i-1)),j,l) * &
-                        ( real(k,xp) - params(2+(3*(i-1)),j,l) ) / (params(3+(3*(i-1)),j,l)**2._xp) * ee) * rr
-                   deriv(3+(3*(i-1)),j,l) = deriv(3+(3*(i-1)),j,l) + (params(1+(3*(i-1)),j,l) * &
-                        ( real(k,xp) - params(2+(3*(i-1)),j,l) )**2._xp / (params(3+(3*(i-1)),j,l)**3._xp) * ee) * rr
-                end do
+                call data_gradient(1, dim_v, params(1+(3*(i-1)),j,l), params(2+(3*(i-1)),j,l), &
+                     params(3+(3*(i-1)),j,l), residual(:,j,l), dim_v, std_map(j,l), deriv(1+(3*(i-1)),j,l), &
+                     deriv(2+(3*(i-1)),j,l), deriv(3+(3*(i-1)),j,l))
              end if
 
              deriv(1+(3*(i-1)),j,l) = deriv(1+(3*(i-1)),j,l) + (lambda_amp * conv_conv_amp(j,l))
@@ -249,6 +291,7 @@ contains
           end do
           !
        end do
+       !$omp end parallel do
     end do        
     
     call ravel_3D(deriv, g, 3*n_gauss, dim_y, dim_x)
@@ -293,6 +336,7 @@ contains
     real(xp), dimension(:), allocatable :: model
     real(xp) :: gauss
     real(xp) :: ee, rr
+    real(xp), dimension(:,:), allocatable :: fpix
 
     integer :: start, finish, delta
 
@@ -321,18 +365,34 @@ contains
     end do
 
     ! Compute the objective function and the gradient
+    ! The spectra are independent and run in parallel (OpenMP); each one's
+    ! term of f is stored and added to f afterwards in the original order, so
+    ! f does not depend on the number of threads.
+    allocate(fpix(dim_y, dim_x))
+    !$omp parallel private(residual_1D, i)
     allocate(residual_1D(dim_v))
     residual_1D = 0._xp
+    !$omp do schedule(static)
     do j=1, dim_x
        do i=1, dim_y
           call myresidual(params(:,i,j), cube(:,i,j), residual_1D, n_gauss, dim_v)
           residual(:,i,j) = residual_1D
           if (std_map(i,j) > 0._xp) then
-             f = f + (myfunc_spec(residual_1D)/std_map(i,j)**2._xp)
+             fpix(i,j) = myfunc_spec(residual_1D)/std_map(i,j)**2._xp
           end if
        end do
     end do
-    deallocate(residual_1D)      
+    !$omp end do
+    deallocate(residual_1D)
+    !$omp end parallel
+    do j=1, dim_x
+       do i=1, dim_y
+          if (std_map(i,j) > 0._xp) then
+             f = f + fpix(i,j)
+          end if
+       end do
+    end do
+    deallocate(fpix)
     
     ! Compute the objective function and the gradient
     do i=1, n_gauss
@@ -349,9 +409,11 @@ contains
        call convolution_2D_mirror(conv_mu, conv_conv_mu, dim_y, dim_x, kernel, 3)
        call convolution_2D_mirror(conv_sig, conv_conv_sig, dim_y, dim_x, kernel, 3)
        
+       ! Regularization terms of f and of the gradient on b_params: serial, in
+       ! the original order (they are cheap). The per-pixel derivatives below
+       ! are independent and run in parallel over columns.
        do l=1, dim_x
           do j=1, dim_y
-             !Regularization
              f = f + (0.5_xp * lambda_amp * conv_amp(j,l)**2)
              f = f + (0.5_xp * lambda_mu * conv_mu(j,l)**2)
              f = f + (0.5_xp * lambda_sig * conv_sig(j,l)**2) + &
@@ -359,9 +421,12 @@ contains
 
              g((n_beta-n_gauss)+i) = g((n_beta-n_gauss)+i) - &
                   (lambda_var_sig * (image_sig(j,l) - b_params(i)) * (image_sig(j,l) / b_params(i)**3._xp))
-             
-             ! The Gaussian (ee) and the weighted residual (rr) are computed once
-             ! per channel and shared by the three derivatives.
+          end do
+       end do
+
+       !$omp parallel do private(j, delta, start, finish) schedule(static)
+       do l=1, dim_x
+          do j=1, dim_y
              if (std_map(j,l) > 0._xp) then
                 delta = 5._xp * params(3+(3*(i-1)),j,l)
                 start = int(params(2+(3*(i-1)),j,l) - delta)
@@ -372,15 +437,9 @@ contains
                 if (finish > dim_v) then 
                    finish = dim_v
                 end if
-                do k=start, finish
-                   ee = exp( ( -(real(k,xp) - params(2+(3*(i-1)),j,l))**2._xp) / (2._xp * params(3+(3*(i-1)),j,l)**2._xp))
-                   rr = residual(k,j,l)/std_map(j,l)**2._xp
-                   deriv(1+(3*(i-1)),j,l) = deriv(1+(3*(i-1)),j,l) + ee * rr
-                   deriv(2+(3*(i-1)),j,l) = deriv(2+(3*(i-1)),j,l) + (params(1+(3*(i-1)),j,l) * &
-                        ( real(k,xp) - params(2+(3*(i-1)),j,l) ) / (params(3+(3*(i-1)),j,l)**2._xp) * ee) * rr
-                   deriv(3+(3*(i-1)),j,l) = deriv(3+(3*(i-1)),j,l) + (params(1+(3*(i-1)),j,l) * &
-                        ( real(k,xp) - params(2+(3*(i-1)),j,l) )**2._xp / (params(3+(3*(i-1)),j,l)**3._xp) * ee) * rr
-                end do
+                call data_gradient(start, finish, params(1+(3*(i-1)),j,l), params(2+(3*(i-1)),j,l), &
+                     params(3+(3*(i-1)),j,l), residual(:,j,l), dim_v, std_map(j,l), deriv(1+(3*(i-1)),j,l), &
+                     deriv(2+(3*(i-1)),j,l), deriv(3+(3*(i-1)),j,l))
              end if
              
              deriv(1+(3*(i-1)),j,l) = deriv(1+(3*(i-1)),j,l) + (lambda_amp * conv_conv_amp(j,l))
@@ -390,6 +449,7 @@ contains
           end do
           !
        end do
+       !$omp end parallel do
     end do        
     
     call ravel_3D(deriv, g, 3*n_gauss, dim_y, dim_x)

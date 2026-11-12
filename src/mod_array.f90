@@ -19,8 +19,7 @@ contains
     real(xp), intent(in), dimension(:,:), allocatable :: kernel
     integer, intent(in) :: dim_y, dim_x, dim_k
 
-    integer :: i, j, m, n, kc
-    real(xp) :: acc
+    integer :: i, j
     real(xp), dimension(:,:), allocatable :: extended
 
     ! Only the interior points are convolved: they are the only ones kept,
@@ -58,22 +57,60 @@ contains
           extended(2+i,2+j) = image(i-2,j)
        end do
     end do
-    
-    kc = dim_k / 2 + 1
 
-    do j=1, dim_x
-       do i=1, dim_y
-          acc = 0._xp
-          do m=1, dim_k
-             do n=1, dim_k
-                acc = acc + extended(2+i+(m-kc), 2+j+(n-kc)) * kernel(dim_k-m+1, dim_k-n+1)
-             end do
-          end do
-          conv(i,j) = acc
-       end do
-    end do
+    ! Each output point is independent: columns run in parallel (OpenMP), in
+    ! convolve_interior (explicit-shape arrays, so the compiler can optimise
+    ! the loop inside the parallel region as it did when it was inlined).
+    call convolve_interior(extended, kernel, conv, dim_y, dim_x, dim_k)
 
   end subroutine convolution_2D_mirror
+
+
+  !! Interior points of the convolution of the padded image: conv(i,j) is the
+  !! sum over the kernel of extended(i+m, j+n) * kernel(dim_k-m+1, dim_k-n+1)
+  !! (centred: (i+2, j+2) in extended is pixel (i, j)), terms in the order
+  !! m, then n. The 3x3 kernel has its own loop with constant bounds.
+  subroutine convolve_interior(extended, kernel, conv, dim_y, dim_x, dim_k)
+    implicit none
+
+    integer, intent(in) :: dim_y, dim_x, dim_k
+    real(xp), intent(in) :: extended(dim_y+4, dim_x+4), kernel(dim_k, dim_k)
+    real(xp), intent(out) :: conv(dim_y, dim_x)
+
+    integer :: i, j, m, n, kc
+    real(xp) :: acc
+
+    kc = dim_k / 2 + 1
+    if (dim_k == 3) then
+       !$omp parallel do private(i, m, n, acc) schedule(static)
+       do j=1, dim_x
+          do i=1, dim_y
+             acc = 0._xp
+             do m=1, 3
+                do n=1, 3
+                   acc = acc + extended(i+m, j+n) * kernel(4-m, 4-n)
+                end do
+             end do
+             conv(i,j) = acc
+          end do
+       end do
+       !$omp end parallel do
+    else
+       !$omp parallel do private(i, m, n, acc) schedule(static)
+       do j=1, dim_x
+          do i=1, dim_y
+             acc = 0._xp
+             do m=1, dim_k
+                do n=1, dim_k
+                   acc = acc + extended(2+i+(m-kc), 2+j+(n-kc)) * kernel(dim_k-m+1, dim_k-n+1)
+                end do
+             end do
+             conv(i,j) = acc
+          end do
+       end do
+       !$omp end parallel do
+    end if
+  end subroutine convolve_interior
 
 
   ! Return a contiguous flattened 1D array from a 2D array
