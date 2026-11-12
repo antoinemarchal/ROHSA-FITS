@@ -160,6 +160,7 @@ contains
     real(xp), dimension(:,:,:), allocatable :: deriv
     real(xp), dimension(:), allocatable :: model
     real(xp) :: gauss
+    real(xp) :: ee, rr
 
     allocate(deriv(3*n_gauss, dim_y, dim_x))
     allocate(residual(dim_v, dim_y, dim_x))
@@ -170,15 +171,15 @@ contains
     allocate(image_amp(dim_y, dim_x), image_mu(dim_y, dim_x), image_sig(dim_y, dim_x))
     allocate(model(dim_v))
 
+    ! params and residual are overwritten below, and ravel_3D overwrites g
+    ! except its last n_gauss entries, so only those and deriv are zeroed.
     deriv = 0._xp
     f = 0._xp
-    g = 0._xp
-    residual = 0._xp    
-    params = 0._xp
     model = 0._xp
     gauss = 0._xp
     
     n_beta = (3*n_gauss * dim_y * dim_x) + n_gauss
+    g((n_beta-n_gauss)+1:n_beta) = 0._xp
 
     call unravel_3D(beta, params, 3*n_gauss, dim_y, dim_x)    
     do i=1,n_gauss
@@ -205,11 +206,7 @@ contains
     
     ! Compute the objective function and the gradient
     do i=1, n_gauss
-       !
-       conv_amp = 0._xp; conv_mu = 0._xp; conv_sig = 0._xp
-       conv_conv_amp = 0._xp; conv_conv_mu = 0._xp; conv_conv_sig = 0._xp
-       image_amp = 0._xp; image_mu = 0._xp; image_sig = 0._xp
-       
+       ! image_* and conv_* are overwritten entirely below.
        image_amp = params(1+(3*(i-1)),:,:)
        image_mu = params(2+(3*(i-1)),:,:)
        image_sig = params(3+(3*(i-1)),:,:)
@@ -231,25 +228,19 @@ contains
              
              g((n_beta-n_gauss)+i) = g((n_beta-n_gauss)+i) - (lambda_var_sig * (image_sig(j,l) - b_params(i)))        
              
-             !
-             do k=1, dim_v                          
-                if (std_map(j,l) > 0._xp) then
-                   deriv(1+(3*(i-1)),j,l) = deriv(1+(3*(i-1)),j,l) + (exp( ( -(real(k,xp) - params(2+(3*(i-1)),j,l))**2._xp) &
-                        / (2._xp * params(3+(3*(i-1)),j,l)**2._xp))) &
-                        * (residual(k,j,l)/std_map(j,l)**2._xp) 
-
+             ! The Gaussian (ee) and the weighted residual (rr) are computed once
+             ! per channel and shared by the three derivatives.
+             if (std_map(j,l) > 0._xp) then
+                do k=1, dim_v
+                   ee = exp( ( -(real(k,xp) - params(2+(3*(i-1)),j,l))**2._xp) / (2._xp * params(3+(3*(i-1)),j,l)**2._xp))
+                   rr = residual(k,j,l)/std_map(j,l)**2._xp
+                   deriv(1+(3*(i-1)),j,l) = deriv(1+(3*(i-1)),j,l) + ee * rr
                    deriv(2+(3*(i-1)),j,l) = deriv(2+(3*(i-1)),j,l) + (params(1+(3*(i-1)),j,l) * &
-                        ( real(k,xp) - params(2+(3*(i-1)),j,l) ) / (params(3+(3*(i-1)),j,l)**2._xp) * &
-                        exp( ( -(real(k,xp) - params(2+(3*(i-1)),j,l))**2._xp) &
-                        / (2._xp * params(3+(3*(i-1)),j,l)**2._xp))) &
-                        * (residual(k,j,l)/std_map(j,l)**2._xp) 
-
+                        ( real(k,xp) - params(2+(3*(i-1)),j,l) ) / (params(3+(3*(i-1)),j,l)**2._xp) * ee) * rr
                    deriv(3+(3*(i-1)),j,l) = deriv(3+(3*(i-1)),j,l) + (params(1+(3*(i-1)),j,l) * &
-                        ( real(k,xp) - params(2+(3*(i-1)),j,l) )**2._xp / (params(3+(3*(i-1)),j,l)**3._xp) * &
-                        exp( ( -(real(k,xp) - params(2+(3*(i-1)),j,l))**2._xp) / (2._xp * params(3+(3*(i-1)),j,l)**2._xp))) &
-                        * (residual(k,j,l)/std_map(j,l)**2._xp)
-                end if
-             end do
+                        ( real(k,xp) - params(2+(3*(i-1)),j,l) )**2._xp / (params(3+(3*(i-1)),j,l)**3._xp) * ee) * rr
+                end do
+             end if
 
              deriv(1+(3*(i-1)),j,l) = deriv(1+(3*(i-1)),j,l) + (lambda_amp * conv_conv_amp(j,l))
              deriv(2+(3*(i-1)),j,l) = deriv(2+(3*(i-1)),j,l) + (lambda_mu * conv_conv_mu(j,l))
@@ -301,6 +292,7 @@ contains
     real(xp), dimension(:,:,:), allocatable :: deriv
     real(xp), dimension(:), allocatable :: model
     real(xp) :: gauss
+    real(xp) :: ee, rr
 
     integer :: start, finish, delta
 
@@ -313,15 +305,15 @@ contains
     allocate(image_amp(dim_y, dim_x), image_mu(dim_y, dim_x), image_sig(dim_y, dim_x))
     allocate(model(dim_v))
 
+    ! params and residual are overwritten below, and ravel_3D overwrites g
+    ! except its last n_gauss entries, so only those and deriv are zeroed.
     deriv = 0._xp
     f = 0._xp
-    g = 0._xp
-    residual = 0._xp    
-    params = 0._xp
     model = 0._xp
     gauss = 0._xp
     
     n_beta = (3*n_gauss * dim_y * dim_x) + n_gauss
+    g((n_beta-n_gauss)+1:n_beta) = 0._xp
 
     call unravel_3D(beta, params, 3*n_gauss, dim_y, dim_x)    
     do i=1,n_gauss
@@ -344,11 +336,7 @@ contains
     
     ! Compute the objective function and the gradient
     do i=1, n_gauss
-       !
-       conv_amp = 0._xp; conv_mu = 0._xp; conv_sig = 0._xp
-       conv_conv_amp = 0._xp; conv_conv_mu = 0._xp; conv_conv_sig = 0._xp
-       image_amp = 0._xp; image_mu = 0._xp; image_sig = 0._xp
-       
+       ! image_* and conv_* are overwritten entirely below.
        image_amp = params(1+(3*(i-1)),:,:)
        image_mu = params(2+(3*(i-1)),:,:)
        image_sig = params(3+(3*(i-1)),:,:)
@@ -372,7 +360,8 @@ contains
              g((n_beta-n_gauss)+i) = g((n_beta-n_gauss)+i) - &
                   (lambda_var_sig * (image_sig(j,l) - b_params(i)) * (image_sig(j,l) / b_params(i)**3._xp))
              
-             !
+             ! The Gaussian (ee) and the weighted residual (rr) are computed once
+             ! per channel and shared by the three derivatives.
              if (std_map(j,l) > 0._xp) then
                 delta = 5._xp * params(3+(3*(i-1)),j,l)
                 start = int(params(2+(3*(i-1)),j,l) - delta)
@@ -384,21 +373,13 @@ contains
                    finish = dim_v
                 end if
                 do k=start, finish
-                ! do k=1, dim_v                          
-                   deriv(1+(3*(i-1)),j,l) = deriv(1+(3*(i-1)),j,l) + (exp( ( -(real(k,xp) - params(2+(3*(i-1)),j,l))**2._xp) &
-                        / (2._xp * params(3+(3*(i-1)),j,l)**2._xp))) &
-                        * (residual(k,j,l)/std_map(j,l)**2._xp) 
-
+                   ee = exp( ( -(real(k,xp) - params(2+(3*(i-1)),j,l))**2._xp) / (2._xp * params(3+(3*(i-1)),j,l)**2._xp))
+                   rr = residual(k,j,l)/std_map(j,l)**2._xp
+                   deriv(1+(3*(i-1)),j,l) = deriv(1+(3*(i-1)),j,l) + ee * rr
                    deriv(2+(3*(i-1)),j,l) = deriv(2+(3*(i-1)),j,l) + (params(1+(3*(i-1)),j,l) * &
-                        ( real(k,xp) - params(2+(3*(i-1)),j,l) ) / (params(3+(3*(i-1)),j,l)**2._xp) * &
-                        exp( ( -(real(k,xp) - params(2+(3*(i-1)),j,l))**2._xp) &
-                        / (2._xp * params(3+(3*(i-1)),j,l)**2._xp))) &
-                        * (residual(k,j,l)/std_map(j,l)**2._xp) 
-
+                        ( real(k,xp) - params(2+(3*(i-1)),j,l) ) / (params(3+(3*(i-1)),j,l)**2._xp) * ee) * rr
                    deriv(3+(3*(i-1)),j,l) = deriv(3+(3*(i-1)),j,l) + (params(1+(3*(i-1)),j,l) * &
-                        ( real(k,xp) - params(2+(3*(i-1)),j,l) )**2._xp / (params(3+(3*(i-1)),j,l)**3._xp) * &
-                        exp( ( -(real(k,xp) - params(2+(3*(i-1)),j,l))**2._xp) / (2._xp * params(3+(3*(i-1)),j,l)**2._xp))) &
-                        * (residual(k,j,l)/std_map(j,l)**2._xp)
+                        ( real(k,xp) - params(2+(3*(i-1)),j,l) )**2._xp / (params(3+(3*(i-1)),j,l)**3._xp) * ee) * rr
                 end do
              end if
              
