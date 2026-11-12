@@ -161,6 +161,8 @@ contains
     !     end of loop do while       
     end do
 
+    call print_stop(n, f, task, isave, dsave)
+
     deallocate(nbd, g)
     deallocate(iwa)
     deallocate(wa)
@@ -244,9 +246,27 @@ contains
     !     end of loop do while       
     end do
 
+    call print_stop(n, f, task, isave, dsave)
+
     deallocate(nbd, g)
     deallocate(iwa)
     deallocate(wa)
   end subroutine minimize
+
+  ! One line on how a cube fit ended: L-BFGS-B iterations (isave(30)), f and g
+  ! evaluations (isave(34)), final cost, projected gradient (dsave(13)) and the
+  ! reason. Without it nothing is printed when maxiter stops the fit: setulb
+  ! is not called again after the STOP, so even iprint >= 0 shows no summary.
+  subroutine print_stop(n, f, task, isave, dsave)
+    implicit none
+    integer, intent(in) :: n
+    real(xp), intent(in) :: f
+    character(len=60), intent(in) :: task
+    integer, intent(in) :: isave(44)
+    real(xp), intent(in) :: dsave(29)
+
+    write(*,'(a,i0,a,i0,a,i0,a,es14.6,a,es10.3,2a)') " lbfgsb_stop n=", n, " iter=", isave(30), &
+         " evals=", isave(34), " f=", f, " projg=", dsave(13), " task=", trim(task)
+  end subroutine print_stop
 
 end module mod_minimize
