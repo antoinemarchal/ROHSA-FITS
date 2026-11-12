@@ -3,7 +3,8 @@
 # FC=mpif90
 FC=ifort
 
-# OpenMP flag for the compiler in FC; build without OpenMP with `make OMPFLAGS=`
+# OpenMP flag for the compiler in FC; build without OpenMP with `make OMPFLAGS=`.
+# For a wrapper such as mpif90, set it by hand (e.g. OMPFLAGS=-fopenmp).
 ifeq ($(findstring gfortran,$(FC)),gfortran)
 OMPFLAGS=-fopenmp
 else
@@ -31,10 +32,10 @@ main.o: main.f90
 	$(FC) $(GFLAGS) -c $^
 
 # L-BFGS-B package
-blas.o: blas.f
-	$(FC) $(GFLAGS) -c $^
-lbfgsb.o: lbfgsb.f
-	$(FC) $(GFLAGS) -c $^
+blas.o: blas.f omp_block.h
+	$(FC) $(GFLAGS) -c $<
+lbfgsb.o: lbfgsb.f omp_block.h
+	$(FC) $(GFLAGS) -c $<
 linpack.o: linpack.f
 	$(FC) $(GFLAGS) -c $^
 timer.o: timer.f
