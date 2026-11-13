@@ -1,16 +1,23 @@
 #fortran compiler
 # FC=gfortran
 # FC=mpif90
-FC=ifort #-qopenmp
+FC=ifort
+
+# OpenMP flag for the compiler in FC; build without OpenMP with `make OMPFLAGS=`
+ifeq ($(findstring gfortran,$(FC)),gfortran)
+OMPFLAGS=-fopenmp
+else
+OMPFLAGS=-qopenmp
+endif
 
 # GFLAGS=-Wall -Wextra -pedantic -std=f2008 -g -O2 -fno-second-underscore -Wno-compare-reals -fcheck=all -fimplicit-none -fbacktrace -gdwarf-2 -fall-intrinsics -Wno-unused-function -fcheck=bounds -I/usr/local/include
 
 # GFLAGS= -O2 -I/usr/local/include -ffixed-line-length-none -Wno-uninitialized -Wall -fbounds-check
 
-GFLAGS= -O2 -I/usr/local/include -lcfitsio
+GFLAGS= -O2 $(OMPFLAGS) -I/usr/local/include -lcfitsio
 # GFLAGS= -O3 -fast -I/usr/local/include -lcfitsio
 
-CFLAGS= -lm -g -O2 -lcfitsio
+CFLAGS= -lm -g -O2 $(OMPFLAGS) -lcfitsio
 
 OUT= ROHSA-FITS-ifort-fast
 # OUT= ROHSA-FITS-ifort-18.0.1-O2-sig_norm

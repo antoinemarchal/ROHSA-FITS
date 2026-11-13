@@ -17,5 +17,20 @@ module mod_constants
   real(xp), parameter, public :: R       = 8.3144598e7_xp !gas cst in csg = Boltzmann cst over proton mass
   real(xp), parameter, public :: gammag  = 5._xp / 3._xp !adiabatic coefficient
   real(xp), parameter, public :: thomson = 6.6524587158e-25_xp !thomson cross-section in cgs
-  
+
+  integer(int64), private :: wall_t0 = -1
+
+contains
+
+  !! Wall-clock seconds since the first call. Used for the printed timings in
+  !! place of cpu_time, which adds up the CPU time of all OpenMP threads.
+  function wall_seconds() result(t)
+    real(xp) :: t
+    integer(int64) :: count, rate
+
+    call system_clock(count, rate)
+    if (wall_t0 < 0) wall_t0 = count
+    t = real(count - wall_t0, xp) / real(rate, xp)
+  end function wall_seconds
+
 end module mod_constants

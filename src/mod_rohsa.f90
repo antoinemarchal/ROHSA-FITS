@@ -233,7 +233,7 @@ contains
              open(unit=11, file=timeout, status='replace', access='append', iostat=ios)
              write(11,fmt=*) "# size grid, Time (s)"
              close(11)
-             call cpu_time(start)
+             start = wall_seconds()
           end if
 
           !Start iteration
@@ -290,18 +290,18 @@ contains
 
                    ! Update parameters 
                    print*,  "Update level", n, ">", power
-                   call cpu_time(lctime)
+                   lctime = wall_seconds()
                    call update(cube_mean, fit_params, b_params, n_gauss, dim_cube(1), power, power, lambda_amp, lambda_mu, &
                         lambda_sig, lambda_var_amp, lambda_var_mu, lambda_var_sig, lambda_lym_sig, lb_sig, ub_sig, maxiter, &
                         m, kernel, iprint, std_map, lym, c_lym, norm_var)
-                   call cpu_time(uctime)
+                   uctime = wall_seconds()
                    print*, "Time level = ", uctime-lctime, "seconds."
                    print*, "Total time since started = ", (uctime - start), "seconds."
                    ! print*, "Estimated total time", ((lctime - start) / 3600) + (((uctime-lctime) / 3600) * 4**(nside-n)), "hours."
                    print*, "Estimated time = ", ((uctime-lctime) / 3600) * 4**(nside-n), "hours."
 
                    !Write output time 
-                   call cpu_time(uctime)
+                   uctime = wall_seconds()
                    write(11,fmt=*) dim_cube(2), uctime-start
                    close(11)
                  
@@ -324,7 +324,7 @@ contains
                 if (n .ne. 0) then
                    open(unit=11, file=timeout, status='unknown', access='append', iostat=ios)
                    if (ios /= 0) stop "opening file error"
-                   call cpu_time(uctime)
+                   uctime = wall_seconds()
                    write(11,fmt=*) power, uctime-start
                    close(11)
                 end if
@@ -390,18 +390,18 @@ contains
     end if
     
     if (regul .eqv. .true.) then
-       call cpu_time(lctime)
+       lctime = wall_seconds()
        call update(data, grid_params, b_params, n_gauss, dim_data(1), dim_data(2), dim_data(3), lambda_amp, lambda_mu, &
             lambda_sig, lambda_var_amp, lambda_var_mu, lambda_var_sig, lambda_lym_sig, lb_sig, ub_sig, maxiter, m, &
             kernel, iprint, std_map, lym, c_lym, norm_var)      
-       call cpu_time(uctime)
+       uctime = wall_seconds()
        print*, "Time = ", uctime-lctime, "seconds."
        
        if (save_grid .eqv. .true.) then
           !Write last time and close file
           open(unit=11, file=timeout, status='unknown', access='append', iostat=ios)
           if (ios /= 0) stop "opening file error"
-          call cpu_time(uctime)
+          uctime = wall_seconds()
           write(11,fmt=*) dim_data(2), uctime-start
           close(11)
        end if

@@ -80,7 +80,7 @@ program ROHSA
   ! END DO
   ! !$OMP END PARALLEL
      
-  call cpu_time(start)
+  start = wall_seconds()
 
   !Print header and get filename in argument
   call get_command_argument(1, filename_parameters)
@@ -172,7 +172,7 @@ program ROHSA
 
   call ender()
 
-  call cpu_time(finish)
+  finish = wall_seconds()
   print '("Time = ",f6.3," seconds.")',finish-start
    
 end program ROHSA

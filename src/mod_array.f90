@@ -19,18 +19,15 @@ contains
     real(xp), intent(in), dimension(:,:), allocatable :: kernel
     integer, intent(in) :: dim_y, dim_x, dim_k
 
-    integer :: i, j, ii, jj, m, n, mm, nn
-    integer :: kCenterY, kCenterX
-    real(xp), dimension(:,:), allocatable :: ext_conv, extended
+    integer :: i, j
+    real(xp), dimension(:,:), allocatable :: extended
 
-    allocate(ext_conv(dim_y+4, dim_x+4))
+    ! Only the interior points are convolved: they are the only ones kept,
+    ! and their neighbours are always inside the padded array, so no bounds
+    ! test is needed. The terms are added in the same order as before.
     allocate(extended(dim_y+4, dim_x+4))
-
-    ii = 0; jj = 0; mm = 0; nn = 0
-    kCenterY = 0; kCenterX = 0
-    ext_conv = 0._xp
     extended = 0._xp
-    
+
     do j=1, dim_x
        do i=1, dim_y
           extended(2+i,2+j) = image(i,j)
@@ -60,37 +57,60 @@ contains
           extended(2+i,2+j) = image(i-2,j)
        end do
     end do
-    
-    kCenterY = dim_k / 2 + 1
-    kCenterX = kCenterY
 
-    do j=1, dim_x+4
-       do i=1, dim_y+4
-          do m=1, dim_k
-             mm = dim_k - m + 1
-             
-             do n=1, dim_k
-                nn = dim_k - n + 1
+    ! Each output point is independent: columns run in parallel (OpenMP), in
+    ! convolve_interior (explicit-shape arrays, so the compiler can optimise
+    ! the loop inside the parallel region as it did when it was inlined).
+    call convolve_interior(extended, kernel, conv, dim_y, dim_x, dim_k)
 
-                ii = i + (m - kCenterY)
-                jj = j + (n - kCenterX)
-                
-                if( ii >= 1 .and. ii < dim_y+4 .and. jj >= 1 .and. jj < dim_x+4 ) then
-                   ext_conv(i,j) = ext_conv(i,j) + extended(ii,jj) * kernel(mm,nn)
-                end if
+  end subroutine convolution_2D_mirror
+
+
+  !! Interior points of the convolution of the padded image: conv(i,j) is the
+  !! sum over the kernel of extended(i+m, j+n) * kernel(dim_k-m+1, dim_k-n+1)
+  !! (centred: (i+2, j+2) in extended is pixel (i, j)), terms in the order
+  !! m, then n. The 3x3 kernel has its own loop with constant bounds.
+  subroutine convolve_interior(extended, kernel, conv, dim_y, dim_x, dim_k)
+    implicit none
+
+    integer, intent(in) :: dim_y, dim_x, dim_k
+    real(xp), intent(in) :: extended(dim_y+4, dim_x+4), kernel(dim_k, dim_k)
+    real(xp), intent(out) :: conv(dim_y, dim_x)
+
+    integer :: i, j, m, n, kc
+    real(xp) :: acc
+
+    kc = dim_k / 2 + 1
+    if (dim_k == 3) then
+       !$omp parallel do private(i, m, n, acc) schedule(static)
+       do j=1, dim_x
+          do i=1, dim_y
+             acc = 0._xp
+             do m=1, 3
+                do n=1, 3
+                   acc = acc + extended(i+m, j+n) * kernel(4-m, 4-n)
+                end do
              end do
-             
+             conv(i,j) = acc
           end do
        end do
-    end do
-
-    do j=1, dim_x
-       do i=1, dim_y
-          conv(i,j) = ext_conv(2+i,2+j)
+       !$omp end parallel do
+    else
+       !$omp parallel do private(i, m, n, acc) schedule(static)
+       do j=1, dim_x
+          do i=1, dim_y
+             acc = 0._xp
+             do m=1, dim_k
+                do n=1, dim_k
+                   acc = acc + extended(2+i+(m-kc), 2+j+(n-kc)) * kernel(dim_k-m+1, dim_k-n+1)
+                end do
+             end do
+             conv(i,j) = acc
+          end do
        end do
-    end do    
-    
-  end subroutine convolution_2D_mirror
+       !$omp end parallel do
+    end if
+  end subroutine convolve_interior
 
 
   ! Return a contiguous flattened 1D array from a 2D array
