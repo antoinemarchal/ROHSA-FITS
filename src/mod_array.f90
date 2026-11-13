@@ -6,8 +6,9 @@ module mod_array
 
   private
 
-  public :: convolution_2D_mirror, ravel_2D, ravel_3D, unravel_3D, mean, std, std_2D, mean_2D, max_2D, ravel_3D_abs, unravel_3D_abs
-  
+  public :: convolution_2D_mirror, convolution_2D_mirror_adjoint, ravel_2D, ravel_3D, unravel_3D, mean, std, &
+       std_2D, mean_2D, max_2D, ravel_3D_abs, unravel_3D_abs
+
   
 contains
 
@@ -91,6 +92,73 @@ contains
     end do    
     
   end subroutine convolution_2D_mirror
+
+
+  !! out = D^T u, the exact adjoint of convolution_2D_mirror (same padding, same kernel):
+  !! <D x, u> = <x, D^T u> for all x, u. The smoothing term is 0.5*lambda*|D x|^2, so its
+  !! gradient is lambda * D^T D x. The mirror padding makes D non-symmetric in the two outer
+  !! rows and columns, so D D x is wrong there, and on the coarse levels that is most pixels.
+  subroutine convolution_2D_mirror_adjoint(u, out, dim_y, dim_x, kernel, dim_k)
+    implicit none
+
+    real(xp), intent(in), dimension(:,:), allocatable :: u
+    real(xp), intent(inout), dimension(:,:), allocatable :: out
+    real(xp), intent(in), dimension(:,:), allocatable :: kernel
+    integer, intent(in) :: dim_y, dim_x, dim_k
+
+    integer :: i, j, m, n, kc, p, q
+    real(xp) :: acc
+    real(xp), dimension(:,:), allocatable :: v
+
+    kc = dim_k / 2 + 1
+    ! v = C^T u on the padded grid, C being the convolution step of convolution_2D_mirror:
+    ! output (i,j) reads extended(2+i+(m-kc), 2+j+(n-kc)) * kernel(dim_k-m+1, dim_k-n+1).
+    allocate(v(dim_y+4, dim_x+4))
+    do q=1, dim_x+4
+       do p=1, dim_y+4
+          acc = 0._xp
+          do m=1, dim_k
+             do n=1, dim_k
+                i = p - 2 - (m-kc)
+                j = q - 2 - (n-kc)
+                if (i >= 1 .and. i <= dim_y .and. j >= 1 .and. j <= dim_x) then
+                   acc = acc + u(i,j) * kernel(dim_k-m+1, dim_k-n+1)
+                end if
+             end do
+          end do
+          v(p,q) = acc
+       end do
+    end do
+
+    ! P^T: add every padded cell back onto the image pixel it was copied from (same loops as the
+    ! padding in convolution_2D_mirror; its corner cells are zero and carry no gradient).
+    do j=1, dim_x
+       do i=1, dim_y
+          out(i,j) = v(2+i,2+j)
+       end do
+    end do
+    do j=1, 2
+       do i=1, dim_y
+          out(i,j) = out(i,j) + v(2+i,j)
+       end do
+    end do
+    do i=1, 2
+       do j=1, dim_x
+          out(i,j) = out(i,j) + v(i,2+j)
+       end do
+    end do
+    do j=dim_x+1, dim_x+2
+       do i=1, dim_y
+          out(i,j-2) = out(i,j-2) + v(2+i,2+j)
+       end do
+    end do
+    do j=1, dim_x
+       do i=dim_y+1, dim_y+2
+          out(i-2,j) = out(i-2,j) + v(2+i,2+j)
+       end do
+    end do
+    deallocate(v)
+  end subroutine convolution_2D_mirror_adjoint
 
 
   ! Return a contiguous flattened 1D array from a 2D array

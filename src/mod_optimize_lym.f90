@@ -97,9 +97,9 @@ contains
        call convolution_2D_mirror(image_mu, conv_mu, dim_y, dim_x, kernel, 3)
        call convolution_2D_mirror(image_sig, conv_sig, dim_y, dim_x, kernel, 3)
        
-       call convolution_2D_mirror(conv_amp, conv_conv_amp, dim_y, dim_x, kernel, 3)
-       call convolution_2D_mirror(conv_mu, conv_conv_mu, dim_y, dim_x, kernel, 3)
-       call convolution_2D_mirror(conv_sig, conv_conv_sig, dim_y, dim_x, kernel, 3)
+       call convolution_2D_mirror_adjoint(conv_amp, conv_conv_amp, dim_y, dim_x, kernel, 3)
+       call convolution_2D_mirror_adjoint(conv_mu, conv_conv_mu, dim_y, dim_x, kernel, 3)
+       call convolution_2D_mirror_adjoint(conv_sig, conv_conv_sig, dim_y, dim_x, kernel, 3)
        
        do l=1, dim_x
           do j=1, dim_y
